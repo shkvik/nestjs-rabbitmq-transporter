@@ -1,3 +1,3 @@
-export function exampleFunction() {
-  return "Hello World!";
-}
+export * from './decorator';
+export * from './rabbitmq.transporter';
+export * from './rabbitmq.proxy';

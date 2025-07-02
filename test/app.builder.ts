@@ -1,8 +1,7 @@
-import { Test } from "@nestjs/testing";
-import { INestApplication } from "@nestjs/common";
-import { ExampleModule } from "./example";
-//import { NatsClientModule } from "./nast-client/nats-client.module";
-//import { NatsTransporter } from "src/index";
+import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import { RabbitTransporter } from 'src/rabbitmq.transporter';
+import { ExampleModule } from './example/example.module';
 
 export class AppBuilder {
   private app: INestApplication<unknown>;
@@ -13,20 +12,22 @@ export class AppBuilder {
     }).compile();
 
     const app = moduleRef.createNestApplication();
-    // app.connectMicroservice({
-    //   strategy: new NatsTransporter({
-    //     servers: ['nats://0.0.0.0:4222'],
-    //     user: 'nats_user',
-    //     pass: 'nats_password',
-    //     test: true
-    //   })
-    // });
+    app.connectMicroservice({
+      strategy: new RabbitTransporter({
+        protocol: 'amqp',
+        port: 5672,
+        hostname: 'localhost',
+        username: 'admin',
+        password: 'admin',
+        heartbeat: 30,
+      }),
+    });
     await app.startAllMicroservices();
     this.app = app;
     return app.init();
   }
 
-  public async dispose() {
+  public async dispose(): Promise<void> {
     await this.app.close();
   }
 }
