@@ -1,14 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { RabbitTransporter } from 'src/rabbitmq.transporter';
-import { ExampleModule } from './example/example.module';
+import { AppModule } from './app.module';
 
 export class AppBuilder {
   private app: INestApplication<unknown>;
 
   public async create(): Promise<INestApplication<unknown>> {
     const moduleRef = await Test.createTestingModule({
-      imports: [ExampleModule],
+      imports: [AppModule],
     }).compile();
 
     const app = moduleRef.createNestApplication();

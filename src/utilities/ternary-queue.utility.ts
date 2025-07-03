@@ -1,5 +1,12 @@
 import { Channel } from 'amqplib';
 
+/**
+ * Creates the main queue and its associated exchange.
+ * Configures dead-lettering to the retry exchange on failure.
+ *
+ * @param queue - Base name for the queue and exchange (used as a prefix).
+ * @param channel - AMQP channel used to declare queue and exchange.
+ */
 export const createMainQueue = async (
   queue: string,
   channel: Channel,
@@ -21,6 +28,12 @@ export const createMainQueue = async (
   );
 };
 
+/**
+ * Creates the archive (dead-letter) queue for messages that exceed max retries.
+ *
+ * @param queue - Base name for the archive queue (used as a prefix).
+ * @param channel - AMQP channel used to declare the queue.
+ */
 export const createArchiveQueue = async (
   queue: string,
   channel: Channel,
@@ -30,6 +43,14 @@ export const createArchiveQueue = async (
   });
 };
 
+/**
+ * Creates the retry queue and its associated exchange.
+ * Messages are delayed using TTL and redirected back to the main queue.
+ *
+ * @param queue - Base name for the retry queue and exchange (used as a prefix).
+ * @param channel - AMQP channel used to declare queue and exchange.
+ * @param ttl - Time-to-live in milliseconds before retrying a message.
+ */
 export const createRetryQueue = async (
   queue: string,
   channel: Channel,

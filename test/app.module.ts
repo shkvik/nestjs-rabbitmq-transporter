@@ -1,8 +1,4 @@
 import { Module } from '@nestjs/common';
-import {
-  ConcurentQueueController,
-  ExampleController,
-} from './example.controller';
 import { ClientsModule } from '@nestjs/microservices';
 import { RabbitProxy } from 'src/rabbitmq.proxy';
 
@@ -23,6 +19,5 @@ import { RabbitProxy } from 'src/rabbitmq.proxy';
       },
     ]),
   ],
-  controllers: [ExampleController, ConcurentQueueController],
 })
-export class ExampleModule {}
+export class AppModule {}

@@ -4,6 +4,5 @@ export type ConnectedMsg = {
 };
 
 export type DisconnectedMsg = {
-  port: number;
-  host: string;
+  reason?: string;
 };

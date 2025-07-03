@@ -22,6 +22,10 @@ import {
   executeNestjsHandler,
 } from './utilities';
 
+/**
+ * RabbitClient — low-level RabbitMQ wrapper that manages connection, channels,
+ * queue setup, publishing, and message consumption logic for different strategies.
+ */
 export class RabbitClient {
   private logger: Logger;
   private connected: boolean;
@@ -35,6 +39,9 @@ export class RabbitClient {
     this.exchangeSet = new Set();
   }
 
+  /**
+   * Establishes connection to RabbitMQ and opens a confirm channel.
+   */
   public async connect(opts: Options.Connect): Promise<void> {
     try {
       if (this.connecting || this.connected) {
@@ -55,14 +62,16 @@ export class RabbitClient {
     }
   }
 
-  public async assertPureQueue(params: {
-    opts: PureQueueOpts;
+  /**
+   * Asserts a basic "pure" queue and starts consuming it using a provided handler.
+   * Optionally binds the queue to exchanges and handles ack/nack policies.
+   */
+  public async assertPureQueue(
+    opts: PureQueueOpts,
     callback: (
       ...args: unknown[]
-    ) => Promise<Observable<unknown>> | Promise<unknown>;
-  }): Promise<void> {
-    const { opts, callback } = params;
-
+    ) => Promise<Observable<unknown>> | Promise<unknown>,
+  ): Promise<void> {
     const channel = await this.connection.createChannel();
     await channel.assertQueue(opts.name, opts.queueOpts);
 
@@ -110,14 +119,16 @@ export class RabbitClient {
     );
   }
 
-  public async assertTernaryQueue(params: {
-    opts: TernaryQueueOpts;
+  /**
+   * Asserts a 3-stage retryable queue (main → retry → archive),
+   * and consumes from the main queue with retry and archive logic.
+   */
+  public async assertTernaryQueue(
+    opts: TernaryQueueOpts,
     callback: (
       ...args: unknown[]
-    ) => Promise<Observable<unknown>> | Promise<unknown>;
-  }): Promise<void> {
-    const { opts, callback } = params;
-
+    ) => Promise<Observable<unknown>> | Promise<unknown>,
+  ): Promise<void> {
     opts.attempts ??= 3;
     opts.ttl ??= 5000;
 
@@ -163,6 +174,9 @@ export class RabbitClient {
     });
   }
 
+  /**
+   * Publishes a message to a queue or exchange with optional publish options.
+   */
   public async publish(params: {
     queue: string;
     content: Buffer;
@@ -184,6 +198,9 @@ export class RabbitClient {
     });
   }
 
+  /**
+   * Gracefully closes the channel and connection to RabbitMQ.
+   */
   public async close(): Promise<void> {
     if (this.channel) {
       await this.channel.close();
@@ -195,16 +212,25 @@ export class RabbitClient {
     this.logger.log('Connection closed.');
   }
 
+  /**
+   * Returns current connection status.
+   */
   public isConnected(): boolean {
     return this.connected;
   }
 
+  /**
+   * Serializes any input to a UTF-8 buffer for publishing.
+   */
   public encode(data: unknown): Buffer {
     return Buffer.from(
       typeof data === 'object' ? JSON.stringify(data) : String(data),
     );
   }
 
+  /**
+   * Attempts to parse a UTF-8 buffer back to JSON or string.
+   */
   public decode(data: Buffer): unknown | string {
     const raw = data.toString('utf-8');
     try {
@@ -214,10 +240,17 @@ export class RabbitClient {
     }
   }
 
+  /**
+   * Returns the active confirm channel.
+   */
   public getChannel(): ConfirmChannel {
     return this.channel;
   }
 
+  /**
+   * Asserts and binds the provided exchanges to the target queue.
+   * Ensures each exchange is declared only once.
+   */
   private async bindExchanges(
     queue: string,
     exchanges: RabbitExchange[],
@@ -233,4 +266,7 @@ export class RabbitClient {
   }
 }
 
+/**
+ * Singleton instance of RabbitClient.
+ */
 export const RabbitClientInstance = new RabbitClient();

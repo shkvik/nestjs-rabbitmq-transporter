@@ -5,12 +5,11 @@ import { buildMetaPackage, RabbitmqStrategy } from '../meta';
 /**
  * TernaryQueue — a structured retry strategy with 3 stages:
  *
- * 1. **Try**: The message is first sent to the main processing queue.
- * 2. **Retry**: If processing fails, it's routed to a retry queue with a delay,
- *    and then re-injected into the main queue.
- * 3. **Archive**: After a maximum number of attempts, the message is moved to an
- *    archive/dead-letter queue for storage or manual inspection.
+ * 1. Try: Message goes to the main queue for processing.
+ * 2. Retry: On failure, it’s delayed and retried via a retry queue.
+ * 3. Archive: After max attempts, it’s sent to an archive queue.
  *
+ * This mode creates 3 queues and, by default, retries 3 times with a 5s delay.
  * This decorator wraps the handler with RabbitMQ metadata to implement the TernaryQueue pattern.
  */
 export const TernaryQueue = (opts: TernaryQueueOpts): MethodDecorator => {

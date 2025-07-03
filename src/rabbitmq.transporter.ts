@@ -1,14 +1,14 @@
-import {
-  CustomTransportStrategy,
-  MessageHandler,
-  Server,
-} from '@nestjs/microservices';
+import { CustomTransportStrategy, Server } from '@nestjs/microservices';
 import { Logger } from '@nestjs/common';
 import { Options } from 'amqplib';
 import { RabbitClient, RabbitClientInstance } from './rabbitmq.client';
-import { ConnectedMsg, PureQueueOpts, TernaryQueueOpts } from './types';
+import { ConnectedMsg, DisconnectedMsg } from './types';
 import { RabbitmqStrategy, StrategyOptsMap, StrategyPackageMeta } from './meta';
 
+/**
+ * Custom RabbitMQ transporter for NestJS microservices.
+ * Supports multiple queue strategies and event hooks.
+ */
 export class RabbitTransporter
   extends Server
   implements CustomTransportStrategy
@@ -30,6 +30,10 @@ export class RabbitTransporter
     );
   }
 
+  /**
+   * Initializes the connection and sets up all queues
+   * based on the provided handler metadata.
+   */
   public async listen(callback: () => void): Promise<void> {
     await this.rabbitClient.connect(this.options);
     await this.emitEvent<ConnectedMsg>(`connect`, {
@@ -41,21 +45,33 @@ export class RabbitTransporter
       const meta = handler.extras.meta as StrategyPackageMeta<
         keyof StrategyOptsMap
       >;
+      const handlerCallback = async (...args: unknown[]) =>
+        handler(args[0], args[1]);
+
       if (meta?.type === RabbitmqStrategy.PURE_QUEUE) {
-        await this.setPureQueueHandler(meta.opts, handler);
+        await this.rabbitClient.assertPureQueue(meta.opts, handlerCallback);
       }
       if (meta?.type === RabbitmqStrategy.TERNARY_QUEUE) {
-        await this.setTernaryQueueHandler(meta.opts, handler);
+        await this.rabbitClient.assertTernaryQueue(meta.opts, handlerCallback);
       }
     }
 
     callback();
   }
 
+  /**
+   * Gracefully closes the RabbitMQ connection and emits a shutdown event.
+   */
   public async close(): Promise<void> {
     await this.rabbitClient.close();
+    await this.emitEvent<DisconnectedMsg>(`disconnect`, {
+      reason: 'app shutdown',
+    });
   }
 
+  /**
+   * Registers a listener for a custom internal event.
+   */
   public on(event: string, callback: Function): void {
     if (this.eventListeners.has(event)) {
       this.eventListeners.get(event).push(callback);
@@ -63,30 +79,16 @@ export class RabbitTransporter
     this.eventListeners.set(event, [callback]);
   }
 
+  /**
+   * Returns the underlying RabbitMQ client instance.
+   */
   public unwrap<T = RabbitClient>(): T {
     return this.rabbitClient as T;
   }
 
-  private async setPureQueueHandler(
-    opts: PureQueueOpts,
-    handler: MessageHandler,
-  ): Promise<void> {
-    await this.rabbitClient.assertPureQueue({
-      opts,
-      callback: async (...args) => handler(args[0], args[1]),
-    });
-  }
-
-  private async setTernaryQueueHandler(
-    opts: TernaryQueueOpts,
-    handler: MessageHandler,
-  ): Promise<void> {
-    await this.rabbitClient.assertTernaryQueue({
-      opts,
-      callback: async (...args) => handler(args[0], args[1]),
-    });
-  }
-
+  /**
+   * Emits a custom internal event to all registered listeners.
+   */
   public async emitEvent<T = any>(event: string, payload?: T): Promise<void> {
     const callbacks = this.eventListeners.get(event) || [];
     for (const callback of callbacks) {
