@@ -54,7 +54,7 @@ export class RabbitProxy extends ClientProxy {
   ): Promise<T> {
     await this.rabbitClient.publish({
       content: this.rabbitClient.encode(packet.data.data),
-      queue: packet.pattern,
+      routingKey: packet.pattern,
       options: packet.data.options,
       exchange: packet.data.exchange,
     });

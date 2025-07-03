@@ -15,6 +15,7 @@ import {
 } from 'amqplib';
 import { Logger } from '@nestjs/common';
 import { lastValueFrom, Observable } from 'rxjs';
+import { once } from 'node:events';
 import {
   createArchiveQueue,
   createMainQueue,
@@ -31,7 +32,7 @@ export class RabbitClient {
   private connected: boolean;
   private connecting: boolean;
   private channel: ConfirmChannel;
-  private connection: ChannelModel;
+  private channelModel: ChannelModel;
   private exchangeSet: Set<string>;
 
   constructor() {
@@ -48,8 +49,8 @@ export class RabbitClient {
         return;
       }
       this.connecting = true;
-      this.connection = await connect(opts);
-      this.channel = await this.connection.createConfirmChannel();
+      this.channelModel = await connect(opts);
+      this.channel = await this.channelModel.createConfirmChannel();
       this.connected = true;
     } catch (err) {
       if (err instanceof Error) {
@@ -72,7 +73,7 @@ export class RabbitClient {
       ...args: unknown[]
     ) => Promise<Observable<unknown>> | Promise<unknown>,
   ): Promise<void> {
-    const channel = await this.connection.createChannel();
+    const channel = await this.channelModel.createChannel();
     await channel.assertQueue(opts.name, opts.queueOpts);
 
     if (opts?.exchanges) {
@@ -87,33 +88,37 @@ export class RabbitClient {
           msg,
           channel,
         } as RabbitContext;
-        const result = await executeNestjsHandler(data, ctx, callback);
-        result.subscribe({
-          complete: () => {
-            switch (opts?.consumeOpts?.ackPolicy) {
-              case AckPolicy.OFF:
-                break;
-              default:
-                channel.ack(msg);
-                break;
-            }
-          },
-          error: () => {
-            switch (opts?.consumeOpts?.nackPolicy) {
-              case NackPolicy.OFF:
-                break;
-              case NackPolicy.REQUEUE:
-                channel.nack(msg, false, true);
-                break;
-              case NackPolicy.DLX:
-                channel.nack(msg, false, false);
-                break;
-              default:
-                channel.ack(msg);
-                break;
-            }
-          },
-        });
+        try {
+          const result = await executeNestjsHandler(data, ctx, callback);
+          await lastValueFrom(result);
+
+          switch (opts?.consumeOpts?.ackPolicy) {
+            case AckPolicy.OFF:
+              break;
+            default:
+              channel.ack(msg);
+              break;
+          }
+        } catch (err) {
+          if (err instanceof Error || Object.hasOwn(err, 'message')) {
+            this.logger.error(
+              `Process in "${opts.name}" failed; error: ${err.message}`,
+            );
+          }
+          switch (opts?.consumeOpts?.nackPolicy) {
+            case NackPolicy.OFF:
+              break;
+            case NackPolicy.REQUEUE:
+              channel.nack(msg, false, true);
+              break;
+            case NackPolicy.DLX:
+              channel.nack(msg, false, false);
+              break;
+            default:
+              channel.ack(msg);
+              break;
+          }
+        }
       },
       opts.consumeOpts,
     );
@@ -135,7 +140,7 @@ export class RabbitClient {
     const mainQueue = `${opts.name}.main.queue`;
     const archiveQueue = `${opts.name}.archive.queue`;
 
-    const channel = await this.connection.createChannel();
+    const channel = await this.channelModel.createChannel();
 
     await createMainQueue(opts.name, channel);
     await createRetryQueue(opts.name, channel, opts.ttl);
@@ -154,7 +159,7 @@ export class RabbitClient {
       try {
         if (xDeath && xDeath?.length && xDeath[0].count >= opts.attempts) {
           await this.publish({
-            queue: archiveQueue,
+            routingKey: archiveQueue,
             content: this.encode(data),
           });
           this.logger.error(`Dispatch to archive → ${archiveQueue}`);
@@ -178,24 +183,86 @@ export class RabbitClient {
    * Publishes a message to a queue or exchange with optional publish options.
    */
   public async publish(params: {
-    queue: string;
     content: Buffer;
+    routingKey: string;
     options?: Options.Publish;
     exchange?: string;
   }): Promise<void> {
-    const { queue, content, options, exchange } = params;
-    return new Promise<void>((resolve, reject) => {
-      this.channel.publish(exchange, queue, content, options, (err, _) => {
-        if (err) {
-          if (err instanceof Error) {
-            this.logger.error(err.message);
-          }
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
+    const { routingKey, content, options, exchange } = params;
+    const ok = this.channel.publish(exchange, routingKey, content, options);
+    if (!ok) {
+      await once(this.channel, 'drain');
+    }
+  }
+
+  /**
+   * Publishes a message reliably, waiting for broker confirmation (ACK/NACK),
+   * handling back-pressure, unroutable returns, channel errors/closures, and timing out if no response.
+   *
+   * @param params.content    - The message payload as a Buffer.
+   * @param params.routingKey - The routing key or queue name to publish to.
+   * @param params.options    - Optional AMQP publish options (headers, persistent flag, etc.).
+   * @param params.exchange   - Optional exchange name (defaults to the default exchange `''`).
+   * @returns A Promise that:
+   *   - resolves once RabbitMQ ACKs the message,
+   *   - rejects if the broker NACKs it, if the channel errors/closes, if the message is unroutable,
+   *     or if no confirmation arrives within the timeout window.
+   */
+  public async publishConfirmed(params: {
+    content: Buffer;
+    routingKey: string;
+    options?: Options.Publish;
+    exchange?: string;
+  }): Promise<void> {
+    const { exchange = '', routingKey, content, options } = params;
+    const timeoutMs = 5000;
+
+    // 1) Publish with mandatory flag; await drain if back-pressure signals a full buffer.
+    const ok = this.channel.publish(exchange, routingKey, content, {
+      ...options,
+      mandatory: true,
     });
+    if (!ok) {
+      this.logger.debug(`Back-pressure: waiting for drain`);
+      await once(this.channel, 'drain');
+    }
+
+    // 2) Prepare all “waiters”: confirm, error, close, return, and timeout.
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    const confirmP = this.channel.waitForConfirms();
+    const errorP = once(this.channel, 'error', { signal }).then(([err]) => {
+      throw err;
+    });
+    const closeP = once(this.channel, 'close', { signal }).then(() => {
+      throw new Error('Channel closed');
+    });
+    const returnP = once(this.channel, 'return', { signal }).then(() => {
+      throw new Error(`Unroutable for ${routingKey}`);
+    });
+
+    let timeoutId: NodeJS.Timeout;
+    const timeoutP = new Promise<never>((_, rej) => {
+      timeoutId = setTimeout(
+        () => rej(new Error(`Publish timeout after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+
+    // 3) Race all of them and handle outcome.
+    try {
+      await Promise.race([confirmP, errorP, closeP, returnP, timeoutP]);
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to publish to ${exchange}/${routingKey}: ${err.message}`,
+        err.stack,
+      );
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+      controller.abort();
+    }
   }
 
   /**
@@ -205,8 +272,8 @@ export class RabbitClient {
     if (this.channel) {
       await this.channel.close();
     }
-    if (this.connection) {
-      await this.connection.close();
+    if (this.channelModel) {
+      await this.channelModel.close();
     }
     this.connected = false;
     this.logger.log('Connection closed.');
@@ -258,7 +325,7 @@ export class RabbitClient {
     for (const exchange of exchanges) {
       const { name, type, options } = exchange;
       if (!this.exchangeSet.has(exchange.name)) {
-        this.channel.assertExchange(name, type, options);
+        await this.channel.assertExchange(name, type, options);
         this.exchangeSet.add(name);
       }
       await this.channel.bindQueue(queue, name, `${queue}.key`);
