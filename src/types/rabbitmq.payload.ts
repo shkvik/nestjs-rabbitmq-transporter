@@ -12,4 +12,10 @@ export interface RabbitPayload<Data = any> {
 
   /** Optional AMQP publish options (e.g., headers, persistent, etc.) */
   options?: Options.Publish;
+
+  /**
+   * If true, wait for broker confirmation before resolving.
+   * @default false
+   */
+  confirmation?: boolean;
 }

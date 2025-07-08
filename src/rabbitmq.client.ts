@@ -227,7 +227,7 @@ export class RabbitClient {
       await once(this.channel, 'drain');
     }
 
-    // 2) Prepare all “waiters”: confirm, error, close, return, and timeout.
+    // 2) Prepare all waiters: confirm, error, close, return, and timeout.
     const controller = new AbortController();
     const { signal } = controller;
 
@@ -269,6 +269,9 @@ export class RabbitClient {
    * Gracefully closes the channel and connection to RabbitMQ.
    */
   public async close(): Promise<void> {
+    if (!this.isConnected()) {
+      return;
+    }
     if (this.channel) {
       await this.channel.close();
     }

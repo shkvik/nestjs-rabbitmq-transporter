@@ -52,12 +52,18 @@ export class RabbitProxy extends ClientProxy {
   protected async dispatchEvent<T = unknown>(
     packet: ReadPacket<RabbitPayload>,
   ): Promise<T> {
-    await this.rabbitClient.publish({
+    const input = {
       content: this.rabbitClient.encode(packet.data.data),
       routingKey: packet.pattern,
       options: packet.data.options,
       exchange: packet.data.exchange,
-    });
+    };
+    if (packet?.data?.confirmation) {
+      await this.rabbitClient.publishConfirmed(input);
+    } else {
+      await this.rabbitClient.publish(input);
+    }
+
     return undefined as unknown as T;
   }
 
