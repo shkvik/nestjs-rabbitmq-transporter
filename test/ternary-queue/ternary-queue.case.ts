@@ -1,11 +1,11 @@
 import { INestApplication } from '@nestjs/common';
-import { TernaryQueueService } from './ternary-queue.controllers';
+import { TernaryQueueService } from './ternary-queue.controller';
 import {
   TERNARY_QUEUE_ARCHIVE,
   TERNARY_QUEUE_DEFAULT,
   TERNARY_QUEUE_ERROR,
   TEST_ATTEMPT_COUNT,
-} from './ternary-queue.contant';
+} from './ternary-queue.constant';
 import { randomUUID } from 'node:crypto';
 import { RabbitClient } from 'src/rabbitmq.client';
 import { RabbitProxy } from 'src/rabbitmq.proxy';

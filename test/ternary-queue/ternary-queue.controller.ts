@@ -7,7 +7,7 @@ import {
   TERNARY_QUEUE_DEFAULT,
   TERNARY_QUEUE_ERROR,
   TEST_ATTEMPT_COUNT,
-} from './ternary-queue.contant';
+} from './ternary-queue.constant';
 
 @Injectable()
 export class TernaryQueueService {
@@ -17,25 +17,23 @@ export class TernaryQueueService {
 }
 
 @Controller()
-export class TernaryQueueDefaultController {
+export class TernaryQueueController {
   constructor(private readonly ternaryQueueService: TernaryQueueService) {}
 
   @TernaryQueue({ name: TERNARY_QUEUE_DEFAULT })
-  public handleQueue(@Payload() dto: unknown): void {
+  public handleDefault(@Payload() dto: unknown): void {
     this.ternaryQueueService.handle(dto);
   }
-}
-
-@Controller()
-export class TernaryQueueAttemptController {
-  constructor(private readonly ternaryQueueService: TernaryQueueService) {}
 
   @TernaryQueue({
     name: TERNARY_QUEUE_ERROR,
     attempts: TEST_ATTEMPT_COUNT,
     ttl: 500,
   })
-  handleQueue(@Payload() dto: unknown, @Ctx() ctx: RabbitContext): void {
+  public handleAttemptError(
+    @Payload() dto: unknown,
+    @Ctx() ctx: RabbitContext,
+  ): void {
     const { msg } = ctx;
     const xDeath = msg?.properties?.headers['x-death'];
 
@@ -45,14 +43,9 @@ export class TernaryQueueAttemptController {
     this.ternaryQueueService.handle(dto);
     throw new RpcException('attempt error');
   }
-}
-
-@Controller()
-export class TernaryQueueArchiveController {
-  constructor(private readonly ternaryQueueService: TernaryQueueService) {}
 
   @TernaryQueue({ name: TERNARY_QUEUE_ARCHIVE, ttl: 500 })
-  handleQueue(@Payload() dto: unknown): void {
+  public handleArchiveError(@Payload() dto: unknown): void {
     this.ternaryQueueService.handle(dto);
     throw new RpcException('archive error');
   }

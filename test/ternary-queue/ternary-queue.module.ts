@@ -1,17 +1,11 @@
 import { Module } from '@nestjs/common';
 import {
-  TernaryQueueDefaultController,
-  TernaryQueueAttemptController,
+  TernaryQueueController,
   TernaryQueueService,
-  TernaryQueueArchiveController,
-} from './ternary-queue.controllers';
+} from './ternary-queue.controller';
 
 @Module({
-  controllers: [
-    TernaryQueueDefaultController,
-    TernaryQueueAttemptController,
-    TernaryQueueArchiveController,
-  ],
+  controllers: [TernaryQueueController],
   providers: [TernaryQueueService],
 })
 export class TernaryQueueModule {}
