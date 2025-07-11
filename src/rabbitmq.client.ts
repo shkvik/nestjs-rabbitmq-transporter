@@ -166,6 +166,12 @@ export class RabbitClient {
         } else {
           const result = await executeNestjsHandler(data, ctx, callback);
           await lastValueFrom(result);
+
+          if (attempt !== 0) {
+            this.logger.log(
+              `Process in "${mainQueue}" resolved; attempt №${attempt + 1};`,
+            );
+          }
         }
         channel.ack(msg);
       } catch (err) {

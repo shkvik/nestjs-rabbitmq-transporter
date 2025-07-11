@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import { RabbitTransporter } from 'src/rabbitmq.transporter';
 import { AppModule } from './app.module';
 
@@ -9,7 +9,9 @@ export class AppBuilder {
   public async create(): Promise<INestApplication<unknown>> {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .setLogger(new Logger())
+      .compile();
 
     const app = moduleRef.createNestApplication();
     app.connectMicroservice({

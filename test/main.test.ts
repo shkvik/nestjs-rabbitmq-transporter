@@ -3,6 +3,7 @@ import { AppBuilder } from './app.builder';
 import { TernaryQueueCase } from './ternary-queue/ternary-queue.case';
 import { PureQueueCase } from './pure-queue/pure-queue.case';
 import { RabbitProxyCase } from './rabbit-proxy/rabbit-proxy.case';
+import { FanoutCase } from './fanout/fanout.case';
 
 describe('NestJs RabbitMQ Transporter Tests', () => {
   let builder: AppBuilder;
@@ -46,29 +47,60 @@ describe('NestJs RabbitMQ Transporter Tests', () => {
     beforeAll(() => {
       cases = new PureQueueCase(app);
     });
-    it('AutoAck + Requeue', async () => {
-      await cases.autoAckRequeue();
+    it('AutoAck + Requeue → success', async () => {
+      await cases.autoAckRequeueOk();
     });
-    it('AutoAck + Skip', async () => {
-      await cases.autoAckSkip();
+    it('AutoAck + Requeue → failure', async () => {
+      await cases.autoAckRequeueError();
     });
-    it('AutoAck + Dlx', async () => {
-      await cases.autoAckDlx();
+
+    it('AutoAck + Skip → success', async () => {
+      await cases.autoAckSkipOk();
     });
-    it('AutoAck + Off', async () => {
-      await cases.autoAckOff();
+    it('AutoAck + Skip failure', async () => {
+      await cases.autoAckSkipError();
     });
-    it('NoAck + Requeue', async () => {
-      await cases.noAckRequeue();
+
+    it('AutoAck + DLX → success', async () => {
+      await cases.autoAckDlxOk();
     });
-    it('NoAck + Skip', async () => {
-      await cases.noAckSkip();
+    it('AutoAck + DLX → failure', async () => {
+      await cases.autoAckDlxError();
     });
-    it('NoAck + Dlx', async () => {
-      await cases.noAckDlx();
+
+    it('AutoAck + Off → success', async () => {
+      await cases.autoAckOffOk();
     });
-    it('NoAck + Off', async () => {
-      await cases.noAckOff();
+    it('AutoAck + Off → failure', async () => {
+      await cases.autoAckOffError();
+    });
+
+    it('NoAck + Requeue → success', async () => {
+      await cases.noAckRequeueOk();
+    });
+    it('NoAck + Requeue → failure', async () => {
+      await cases.noAckRequeueError();
+    });
+
+    it('NoAck + Skip → success', async () => {
+      await cases.noAckSkipOk();
+    });
+    it('NoAck + Skip → failure', async () => {
+      await cases.noAckSkipError();
+    });
+
+    it('NoAck + DLX → success', async () => {
+      await cases.noAckDlxOk();
+    });
+    it('NoAck + DLX → failure', async () => {
+      await cases.noAckDlxError();
+    });
+
+    it('NoAck + Off → success', async () => {
+      await cases.noAckOffOk();
+    });
+    it('NoAck + Off → failure', async () => {
+      await cases.noAckOffError();
     });
   });
   describe('TernaryQueue', () => {
@@ -85,6 +117,26 @@ describe('NestJs RabbitMQ Transporter Tests', () => {
     });
     it('When archive queue', async () => {
       await cases.whenArchiveQueue();
+    });
+  });
+
+  describe('Fanout', () => {
+    let cases: FanoutCase;
+
+    beforeAll(() => {
+      cases = new FanoutCase(app);
+    });
+    it('When all right', async () => {
+      await cases.whenAllRight();
+    });
+    it('If one of the ternary queue throw error', async () => {
+      await cases.oneOfTheTernaryQueueThrowError();
+    });
+    it('If queue at most once throw error', async () => {
+      await cases.atMostOnceThrowError();
+    });
+    it('If queue at least once throw error', async () => {
+      await cases.atLeastOnceThrowError();
     });
   });
 });

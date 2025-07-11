@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule } from '@nestjs/microservices';
 import { RabbitProxy } from 'src/rabbitmq.proxy';
-import { ExampleModule } from './fan-out/fan-out.module';
 import { TernaryQueueModule } from './ternary-queue/ternary-queue.module';
 import { PureQueueModule } from './pure-queue/pure-queue.module';
+import { FanoutModule } from './fanout/fanout.module';
 
 @Module({
   imports: [
     TernaryQueueModule,
     PureQueueModule,
-    ExampleModule,
+    FanoutModule,
     ClientsModule.register([
       {
         name: 'RabbitProxy',
