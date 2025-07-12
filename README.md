@@ -126,7 +126,7 @@ All other standard amqplib consumer options (such as noAck, exclusive, priority,
 | `OFF`    | Do not perform any `nack`. You must handle it manually. |
 
 ## Ternary Queue
-is a higher-level queue pattern that extends the basic message consumption flow with built-in support for retries and dead-lettering. When you use this decorator, it automatically sets up a complete three-phase processing pipeline consisting of main, retry, and archive queues, along with two associated exchanges.
+TernaryQueue is a higher-level queue pattern that extends the basic message consumption flow with built-in support for retries and dead-lettering. When you use this decorator, it automatically sets up a complete three-phase processing pipeline consisting of main, retry, and archive queues, along with two associated exchanges.
 
 The idea is simple: when a message is consumed from the main queue and the handler succeeds, the message is acknowledged (ack) and processing ends. If an error occurs, the transporter does not drop the message immediately. Instead, it follows a structured failure flow.
 
@@ -164,6 +164,13 @@ Exchanges:
 This setup requires no manual configuration. All bindings, dead-letter settings, and TTLs are handled internally by the transporter.
 
 Under the hood, the queue declarations use x-dead-letter-exchange, x-dead-letter-routing-key, and x-message-ttl to define message flows. The retry logic is deterministic, and messages maintain metadata (such as x-death headers) across hops, allowing you to build advanced retry policies if needed.
+
+> [!Important]
+> When using `@TernaryQueue`, **you must send messages directly to the `.main.queue`**, not the base queue name.
+>
+> For example, if you register a ternary queue with the name `example`, then you **must publish messages to `example.main.queue`**, not just `example`.
+> Failing to do so will result in the message being dropped or unroutable, since only the `example.main.queue` is actively consumed by your handler.
+
 
 ## Additional request details
 
@@ -218,7 +225,47 @@ import { AppService } from './app.service';
   providers: [AppService],
 })
 export class AppModule {}
-
 ```
 
+The `RabbitProxy` supports message publishing to **custom exchanges** of any standard AMQP type, including `'direct'`, `'topic'`, `'fanout'`, `'headers'`, and `'match'` (if enabled in your broker). You can specify the exchange name in the `RabbitPayload` object using the `exchange` field.
+
+When publishing to an exchange, the `routingKey` (passed as the first argument to `emit()`) will be used for message routing, depending on the exchange type.
+
+Additionally, if you set the `confirmation` flag to `true`, the transporter will wait for **broker-level confirmation** (using `waitForConfirms()`) before resolving the promise. This gives you delivery guarantees similar to `at-least-once`, ensuring the broker has accepted the message.
+
+This makes `RabbitProxy.emit()` suitable for both high-speed fire-and-forget use cases and critical message flows that require strong delivery guarantees.
+
+```ts
+// basic example
+import { Injectable } from '@nestjs/common';
+import { Inject } from '@nestjs/common';
+import { RabbitProxyInstance, RabbitPayload } from 'nodejs-rabbitmq-transporter';
+
+@Injectable()
+export class NotificationService {
+  constructor(
+    @Inject('RabbitProxy')
+    private readonly rabbitProxy: RabbitProxyInstance,
+  ) {}
+
+  sendDirectToQueue() {
+    const payload = {
+      message: 'Direct message to queue',
+    };
+
+    this.rabbitProxy.emit<void, RabbitPayload<typeof payload>>('my.queue.name', {
+      data: payload,
+    });
+  }
+}
+
+```
+### `RabbitPayload<Data>` Parameters
+
+| Field          | Type              | Required | Default | Description                                                                                                                                 |
+| -------------- | ----------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data`         | `Data`            | Yes      | –       | The actual message payload. It will be serialized before publishing.                                                                        |
+| `exchange`     | `string`          | No       | `''`    | Name of the exchange to publish the message to. If omitted, the default exchange is used (which sends directly to a queue by `routingKey`). |
+| `options`      | `Options.Publish` | No       | –       | Optional AMQP publish options, such as `headers`, `persistent`, `priority`, etc. Passed directly to `channel.publish()`.                    |
+| `confirmation` | `boolean`         | No       | `false` | If `true`, the method waits for broker-level confirmation using `waitForConfirms()`. Recommended for critical or guaranteed delivery.       |
 
