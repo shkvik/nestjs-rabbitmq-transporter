@@ -83,4 +83,84 @@ export class MathController {
 ```
 It’s important to note that @PureQueue() does not automatically create dead-letter or retry queues. You need to configure these manually, and the documentation below explains how to do that.
 
+The @PureQueue() decorator accepts an options object that allows you to fine-tune both how the queue is declared and how messages are consumed and acknowledged.
 
+You can pass queueOpts, which corresponds to the standard amqplib queue assertion options. This lets you control things like durability, exclusivity, auto-deletion, and dead-letter settings when the queue is created.
+
+For consumer behavior, you can use the consumeOpts field. This includes ackPolicy and nackPolicy, which define how the transporter should react when a message is successfully handled or fails during processing. By default, ackPolicy is set to AUTO, meaning the message will be automatically acknowledged after successful execution. If you want to take full control, you can set it to OFF, and handle acknowledgments manually inside your handler.
+
+For failed messages, the nackPolicy determines what happens when an exception is thrown. The default is DLX, which sends the message to a configured dead-letter exchange. You can change this to REQUEUE to immediately try again, SKIP to drop the message silently, or OFF to handle the nack logic yourself.
+
+All other standard amqplib consumer options (such as noAck, exclusive, priority, etc.) can also be included under consumeOpts, and will be passed directly to channel.consume.
+
+### `PureQueue` Options
+
+| Field          | Type                      | Description |
+|----------------|---------------------------|-------------|
+| `name`         | `string`                  | The name of the queue to consume. Required. |
+| `queueOpts`    | `Options.AssertQueue`     | AMQP queue settings passed to `channel.assertQueue`. Used to configure durability, DLX, etc. |
+| `consumeOpts`  | `ConsumeOpts`             | Settings related to how the queue is consumed (ack/nack policies, AMQP consumer options). |
+
+### `consumeOpts` Details
+
+| Field         | Type            | Default | Description |
+|---------------|-----------------|---------|-------------|
+| `ackPolicy`   | `AckPolicy`     | `AUTO`  | Defines how to acknowledge successful messages. Use `AUTO` to auto-ack, or `OFF` to handle manually. |
+| `nackPolicy`  | `NackPolicy`    | `DLX`   | Defines how to reject failed messages. Options: `DLX`, `REQUEUE`, `SKIP`, or `OFF`. |
+| *(...)*       | `Options.Consume` | —     | You can also pass any standard AMQP consume options like `noAck`, `exclusive`, `priority`, etc. |
+
+### AckPolicy Enum
+
+| Value   | Description |
+|---------|-------------|
+| `AUTO`  | Automatically acknowledge the message after successful processing. |
+| `OFF`   | Disable automatic `ack`. You must call `msg.ack()` manually. |
+
+### NackPolicy Enum
+
+| Value    | Description |
+|----------|-------------|
+| `DLX`    | Send failed messages to the dead-letter exchange. |
+| `REQUEUE`| Requeue the message immediately for retry. |
+| `SKIP`   | Drop the message silently without retry or DLX. |
+| `OFF`    | Do not perform any `nack`. You must handle it manually. |
+
+## Ternary Queue
+is a higher-level queue pattern that extends the basic message consumption flow with built-in support for retries and dead-lettering. When you use this decorator, it automatically sets up a complete three-phase processing pipeline consisting of main, retry, and archive queues, along with two associated exchanges.
+
+The idea is simple: when a message is consumed from the main queue and the handler succeeds, the message is acknowledged (ack) and processing ends. If an error occurs, the transporter does not drop the message immediately. Instead, it follows a structured failure flow.
+
+On failure, the message is re-published to the retry exchange, which sends it into a retry queue with a delay (using x-message-ttl). After that delay expires, the message is routed back to the main queue for another attempt. If the message fails repeatedly beyond a configured threshold (e.g. via x-death header count), it is finally sent to an archive queue for inspection or manual recovery.
+
+This pattern ensures at-least-once delivery semantics and makes your system resilient to transient errors, without introducing infinite retry loops or silent drops.
+```ts
+@Controller()
+export class MathController {
+  @TernaryQueue({ name: 'example' })
+  accumulate(@Payload() data: number[]): void {
+    console.log((data || []).reduce((a, b) => a + b));
+  }
+}
+```
+### `TernaryQueue` Options
+
+| Field      | Type              | Default | Description                                                                                                        |
+| ---------- | ----------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `name`     | `string`          | —       | The base name for the queue group. Required. All queues and exchanges will be derived from this.                   |
+| `attempts` | `number`          | `3`     | The maximum number of retry attempts before the message is moved to the archive queue.                             |
+| `ttl`      | `number`          | `5000`  | The delay in milliseconds before a failed message is retried. This becomes the `x-message-ttl` of the retry queue. |
+
+When you declare TernaryQueue, the following infrastructure is created automatically:
+
+Queues:
+1. example.main.queue – the primary working queue
+2. example.retry.queue – holds failed messages temporarily for retry after delay
+3. example.archive.queue – stores permanently failed messages for inspection
+
+Exchanges:
+1. example.main.exchange – main direct exchange used for normal routing
+2. example.retry.exchange – dead-letter exchange that routes messages to retry
+
+This setup requires no manual configuration. All bindings, dead-letter settings, and TTLs are handled internally by the transporter.
+
+Under the hood, the queue declarations use x-dead-letter-exchange, x-dead-letter-routing-key, and x-message-ttl to define message flows. The retry logic is deterministic, and messages maintain metadata (such as x-death headers) across hops, allowing you to build advanced retry policies if needed.
