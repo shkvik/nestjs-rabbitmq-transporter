@@ -164,3 +164,61 @@ Exchanges:
 This setup requires no manual configuration. All bindings, dead-letter settings, and TTLs are handled internally by the transporter.
 
 Under the hood, the queue declarations use x-dead-letter-exchange, x-dead-letter-routing-key, and x-message-ttl to define message flows. The retry logic is deterministic, and messages maintain metadata (such as x-death headers) across hops, allowing you to build advanced retry policies if needed.
+
+## Additional request details
+
+All consumers decorators fully support the `NestJS` execution context, just like standard `REST` or `GraphQL` handlers. This means you can inject and use the full power of NestJS features inside your queue handler methods.
+You can access the incoming message payload using the `@Payload()` decorator. Additionally, if you need to inspect the raw AMQP context (such as headers, delivery info, redelivery flags, etc.), you can inject it via `@Ctx()`.
+
+All standard NestJS features are supported out of the box, including:
+- Validation pipes: You can apply class-validator rules to incoming payloads, just like in REST controllers.
+- Exception filters: If your handler throws an error, it will go through the configured `@Catch()` filters.
+- Guards: You can apply `@UseGuards()` to protect handlers conditionally.
+- Interceptors: `@UseInterceptors()` can be used for logging, tracing, or transforming results.
+- Dependency injection: Services, repositories, and other providers work as expected.
+
+In short, the transporter integrates tightly with the NestJS lifecycle, so you can reuse your architecture, logic, and decorators without compromise — even in a message-driven context.
+
+## Client (producer class)
+
+The library also provides a **RabbitMQ proxy client**, fully compatible with NestJS’s dependency injection system and designed to feel native within the framework. You can inject this proxy anywhere in your services or resolvers to emit messages or trigger downstream events.
+
+Unlike NestJS's built-in `ClientProxy`, this proxy does **not support request/response messaging** (i.e., `.send()`), by design — as this pattern is intentionally excluded for architectural reasons. Instead, the proxy focuses on **fire-and-forget**, **at-least-once** messaging with advanced delivery guarantees.
+
+In addition to basic publishing, the proxy also supports:
+
+* **Confirmed delivery** via `waitForConfirms()`, ensuring the broker acknowledges message receipt
+* **Metadata headers**, which you can attach and consume later in downstream services
+* **Custom exchange/routingKey configuration**, to route events with precision
+
+```ts
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { ClientsModule } from '@nestjs/microservices';
+import { RabbitProxy } from 'nodejs-rabbitmq-transporter'; // your custom proxy
+import { AppService } from './app.service';
+
+@Module({
+  imports: [
+    ClientsModule.register([
+      {
+        name: 'RabbitProxy',
+        customClass: RabbitProxy,
+        options: {
+          protocol: 'amqp',
+          port: 5672,
+          hostname: 'localhost',
+          username: 'admin',
+          password: 'admin',
+          heartbeat: 30,
+        },
+      },
+    ]),
+  ],
+  providers: [AppService],
+})
+export class AppModule {}
+
+```
+
+
