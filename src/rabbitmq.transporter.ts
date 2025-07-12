@@ -73,10 +73,10 @@ export class RabbitTransporter
    * Registers a listener for a custom internal event.
    */
   public on(event: string, callback: Function): void {
-    if (this.eventListeners.has(event)) {
-      this.eventListeners.get(event).push(callback);
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
     }
-    this.eventListeners.set(event, [callback]);
+    this.eventListeners.get(event).push(callback);
   }
 
   /**
