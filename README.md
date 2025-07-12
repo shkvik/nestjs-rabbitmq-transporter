@@ -5,6 +5,8 @@
 > This custom transporter was designed to provide a clean and convenient abstraction layer for RabbitMQ within NestJS, with full support for all core framework features such as interceptors, filters, guards, and dynamic context resolution. It aims to offer a seamless developer experience while elegantly encapsulating well-established messaging patterns (like main–retry–archive queues, acknowledgements, and error handling strategies) behind a declarative and idiomatic NestJS interface.
 
 ## Overview
+This library provides a full-featured, opinionated RabbitMQ transporter for NestJS microservices. It replaces Nest's built-in transport layer with a more robust, fault-tolerant message bus that includes automatic retry queues, dead-letter queues, and first-class support for NestJS patterns such as interceptors, guards, pipes, and exception filters.
+
 It is built on top of the low-level amqplib library, giving you fine-grained control over AMQP protocol features while staying fully aligned with NestJS design principles.
 
 Beginning to work with the library, I recommend reviewing the documentation and understanding how it works, so you won't encounter any surprises during usage. I aimed to create the simplest possible interface with reliable logic, which is why I wrote tests for every configuration option — so both you and I can sleep better at night.
